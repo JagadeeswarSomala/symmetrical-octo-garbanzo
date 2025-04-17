@@ -88,6 +88,7 @@ int main(int, char**)
     ImGuiIO& io = ImGui::GetIO(); (void)io;
     io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;     // Enable Keyboard Controls
     io.ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad;      // Enable Gamepad Controls
+    io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;
 
     // Setup Dear ImGui style
     ImGui::StyleColorsDark();
@@ -188,14 +189,85 @@ int main(int, char**)
             ImGui::EndTable();
         }
 
+        // === Tabs Section Below Table ===
+        if (ImGui::BeginTable("MainGrid", 2, ImGuiTableFlags_SizingStretchProp | ImGuiTableFlags_RowBg, ImVec2(0.0f, 0.0f)))
+        {
+            ImGui::TableSetupColumn(nullptr, ImGuiTableColumnFlags_WidthStretch);
+            ImGui::TableSetupColumn(nullptr, ImGuiTableColumnFlags_WidthStretch);
+
+            // Row 0
+            ImGui::TableNextRow();
+
+            // --- Cell [0][0]: Hex Editor ---
+            ImGui::TableSetColumnIndex(0);
+            {
+                ImGui::BeginChild("HexEditorRegion", ImVec2(0, 300), true);
+                static MemoryEditor mem_edit;
+                static char dummy_data[0x100] = {};
+                mem_edit.DrawContents(dummy_data, sizeof(dummy_data));
+                ImGui::EndChild();
+            }
+
+            // --- Cell [0][1]: Struct Input w/ tab + ---
+            ImGui::TableSetColumnIndex(1);
+            {
+                ImGui::BeginChild("StructTabsRegion", ImVec2(0, 300), true);
+
+                static std::vector<std::string> tab_names = {"Struct 1"};
+                static int tab_counter = 2;
+
+                if (ImGui::BeginTabBar("StructTabs"))
+                {
+                    // Loop through struct tabs
+                    for (size_t i = 0; i < tab_names.size(); ++i)
+                    {
+                        if (ImGui::BeginTabItem(tab_names[i].c_str()))
+                        {
+                            ImGui::Text("Input box for %s goes here.", tab_names[i].c_str());
+                            ImGui::EndTabItem();
+                        }
+                    }
+
+                    // Add "+" tab
+                    if (ImGui::TabItemButton("+", ImGuiTabItemFlags_Trailing | ImGuiTabItemFlags_NoTooltip))
+                    {
+                        tab_names.push_back("Struct " + std::to_string(tab_counter++));
+                    }
+
+                    ImGui::EndTabBar();
+                }
+
+                ImGui::EndChild();
+            }
+
+            // Row 1
+            ImGui::TableNextRow();
+
+            // --- Cell [1][0]: JSON Output ---
+            ImGui::TableSetColumnIndex(0);
+            {
+                ImGui::BeginChild("JsonOutputRegion", ImVec2(0, 200), true);
+                ImGui::TextWrapped("Parsed JSON will be displayed here.");
+                ImGui::EndChild();
+            }
+
+            // --- Cell [1][1]: Error Console ---
+            ImGui::TableSetColumnIndex(1);
+            {
+                ImGui::BeginChild("ErrorConsoleRegion", ImVec2(0, 200), true);
+                ImGui::TextWrapped("Any parse/load errors will be displayed here.");
+                ImGui::EndChild();
+            }
+
+            ImGui::EndTable();
+        }
+
         // === Shared Load Action (Once per frame) ===
         if (trigger_load)
         {
             // Replace this with actual loading logic
             printf("Loading file: %s\n", binary_file_path);
         }
-
-
 
         ImGui::End();
 
