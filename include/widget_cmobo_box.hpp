@@ -7,7 +7,7 @@
 
 #include "imgui.h"
 
-class WidgetComboBox
+class widget_combo_box
 {
 private:
     int item_selected_index;
@@ -17,7 +17,7 @@ private:
     ImGuiTextFilter filter;
 
 public:
-    WidgetComboBox(const std::string& _combo_name, const std::vector<std::string>& _combo_items, int _item_selected_index = 0, ImGuiComboFlags _flags = 0)
+    widget_combo_box(const std::string& _combo_name, const std::vector<std::string>& _combo_items, int _item_selected_index = 0, ImGuiComboFlags _flags = 0)
         : combo_name(_combo_name), combo_items(_combo_items), item_selected_index(_item_selected_index), flags(_flags) {}
 
     void set_combo_name(const std::string& _combo_name)

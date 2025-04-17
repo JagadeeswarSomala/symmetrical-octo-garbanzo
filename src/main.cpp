@@ -22,21 +22,21 @@
 
 # include "widget_cmobo_box.hpp"
 
-WidgetComboBox *GetDriveFamilyComboBoxWidget(void)
+widget_combo_box *GetDriveFamilyComboBoxWidget(void)
 {
     std::string drive_family_combo_name = "Drive Family";
     std::vector<std::string> drive_family_items = {"none", "Peregrine", "Phoenix-Ion", "Condor", "Raptor", "Raven", "Carbon", "Hydro"};
 
-    WidgetComboBox *pobj_drive_family_combo_box  = new WidgetComboBox(drive_family_combo_name, drive_family_items);
+    widget_combo_box *pobj_drive_family_combo_box  = new widget_combo_box(drive_family_combo_name, drive_family_items);
     return pobj_drive_family_combo_box;
 }
 
-WidgetComboBox *GetLogTypeComboBoxWidget(void)
+widget_combo_box *GetLogTypeComboBoxWidget(void)
 {
     std::string log_type_combo_name = "Log Type";
     std::vector<std::string> log_type_items = {"none", "Supported Logs", "SMART", "FW Slot Info", "Host Telemetry", "Controller Telemetry", "Persistent", "Error Info"};
 
-    WidgetComboBox *pobj_log_type_combo_box  = new WidgetComboBox(log_type_combo_name, log_type_items);
+    widget_combo_box *pobj_log_type_combo_box  = new widget_combo_box(log_type_combo_name, log_type_items);
     return pobj_log_type_combo_box;
 }
 
@@ -48,8 +48,10 @@ static void glfw_error_callback(int error, const char* description)
 // Main code
 int main(int, char**)
 {
-    WidgetComboBox *pobj_log_type_combo_box     = nullptr;
-    WidgetComboBox *pobj_drive_family_combo_box = nullptr;
+    widget_combo_box *pobj_log_type_combo_box     = nullptr;
+    widget_combo_box *pobj_drive_family_combo_box = nullptr;
+
+    char binary_file_path[256] =  {'\0'};
 
     glfwSetErrorCallback(glfw_error_callback);
     if (!glfwInit())
@@ -143,15 +145,60 @@ int main(int, char**)
         ImGui_ImplGlfw_NewFrame();
         ImGui::NewFrame();
 
-        // Hex Editor Window
-        // {
-        //     ImGui::Begin("Hex editor");
-        //     ImGui::End();
-        // }
-
-        pobj_drive_family_combo_box->DrawComboBox();
-        pobj_log_type_combo_box->DrawComboBox();
+        // Use full screen window
+        ImGui::SetNextWindowPos(ImVec2(0, 0));
+        ImGui::SetNextWindowSize(ImGui::GetIO().DisplaySize);
+        ImGui::Begin("MainWindow", nullptr,
+                    ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoTitleBar |
+                    ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove |
+                    ImGuiWindowFlags_NoBringToFrontOnFocus | ImGuiWindowFlags_NoNavFocus);
         
+        bool trigger_load = false;
+
+        if (ImGui::BeginTable("ToolbarTable", 4, ImGuiTableFlags_SizingStretchProp | ImGuiTableFlags_NoBordersInBody))
+        {
+            ImGui::TableSetupColumn("BinPath", ImGuiTableColumnFlags_WidthStretch, 700.0f); // 50%
+            ImGui::TableSetupColumn("DriveFamily", ImGuiTableColumnFlags_WidthStretch, 250.0f); // 20%
+            ImGui::TableSetupColumn("LogType", ImGuiTableColumnFlags_WidthStretch, 250.0f); // 20%
+
+            ImGui::TableNextRow();
+
+            // === Column 0: Binary File Path Input ===
+            ImGui::TableSetColumnIndex(0);
+            bool enter_pressed = ImGui::InputTextWithHint("##BinPath", "Enter binary file path", binary_file_path, sizeof(binary_file_path),
+                                                        ImGuiInputTextFlags_EnterReturnsTrue);
+
+            // Check if Enter was pressed
+            if (enter_pressed)
+                trigger_load = true;
+
+            // === Load Button (Inline) ===
+            ImGui::SameLine();
+            if (ImGui::Button("Load"))
+                trigger_load = true;
+
+            // === Column 1: Drive Family Combo ===
+            ImGui::TableSetColumnIndex(1);
+            pobj_drive_family_combo_box->DrawComboBox();
+
+            // === Column 2: Log Type Combo ===
+            ImGui::TableSetColumnIndex(2);
+            pobj_log_type_combo_box->DrawComboBox();
+
+            ImGui::EndTable();
+        }
+
+        // === Shared Load Action (Once per frame) ===
+        if (trigger_load)
+        {
+            // Replace this with actual loading logic
+            printf("Loading file: %s\n", binary_file_path);
+        }
+
+
+
+        ImGui::End();
+
         /********** Rendering **********/
         ImGui::Render();
         int display_w, display_h;
@@ -175,6 +222,9 @@ exit_status:
 
     glfwDestroyWindow(window);
     glfwTerminate();
+
+    delete pobj_log_type_combo_box;
+    delete pobj_drive_family_combo_box;
 
     return 0;
 }
