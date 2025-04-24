@@ -1,43 +1,210 @@
-#include <stdio.h>
 #include <iostream>
 #include <string>
 #include <vector>
 
+#include <stdio.h>
+
 #include "imgui.h"
+#include "imgui_internal.h"
+#include "imgui_stdlib.h"
+
 #include "imgui_impl_glfw.h"
 #include "imgui_impl_opengl3.h"
-#include "imgui_memory_editor.h"
 
 #define GL_SILENCE_DEPRECATION
-
-#include <GLFW/glfw3.h> // Will drag system OpenGL headers
+#if defined(IMGUI_IMPL_OPENGL_ES2)
+#include <GLES2/gl2.h>
+#endif
+#include <GLFW/glfw3.h>
 
 #if defined(_MSC_VER) && (_MSC_VER >= 1900) && !defined(IMGUI_DISABLE_WIN32_FUNCTIONS)
 #pragma comment(lib, "legacy_stdio_definitions")
 #endif
 
 #ifdef __EMSCRIPTEN__
-#include "imgui/examples/libs/emscripten/emscripten_mainloop_stub.h"
+#include "../imgui/examples/libs/emscripten/emscripten_mainloop_stub.h"
 #endif
 
-# include "widget_cmobo_box.hpp"
-
-widget_combo_box *GetDriveFamilyComboBoxWidget(void)
+class WidgetInputTextMultiline
 {
-    std::string drive_family_combo_name = "Drive Family";
-    std::vector<std::string> drive_family_items = {"none", "Peregrine", "Phoenix-Ion", "Condor", "Raptor", "Raven", "Carbon", "Hydro"};
+public:
+    WidgetInputTextMultiline() : m_pt_flags(0) {}
 
-    widget_combo_box *pobj_drive_family_combo_box  = new widget_combo_box(drive_family_combo_name, drive_family_items);
-    return pobj_drive_family_combo_box;
-}
+    WidgetInputTextMultiline(const std::string &strLabel, ImGuiInputTextFlags flags = ImGuiInputTextFlags_AllowTabInput, ImVec2 size = ImVec2(-FLT_MIN, 200))
+        : m_pt_strLabel(strLabel), m_pt_flags(flags), m_pt_size(size) {}
 
-widget_combo_box *GetLogTypeComboBoxWidget(void)
+    void SetLabel(const std::string &strLabel)
+    {
+        m_pt_strLabel = strLabel;
+    }
+
+    void SetFlags(ImGuiInputTextFlags flags)
+    {
+        m_pt_flags = flags;
+    }
+
+    void SetSize(float width = -FLT_MIN, float height = 200)
+    {
+        m_pt_size.x = width;
+        m_pt_size.y = height;
+    }
+
+    std::string & GetInputData()
+    {
+        return m_pt_strInputData;
+    }
+
+    const std::string & GetInputData() const
+    {
+        return m_pt_strInputData;
+    }
+
+    void Draw()
+    {
+        ImGui::InputTextMultiline(m_pt_strLabel.c_str(), &m_pt_strInputData, m_pt_size, m_pt_flags);
+    }
+
+protected:
+    std::string m_pt_strLabel;
+    ImVec2 m_pt_size;
+    ImGuiInputTextFlags m_pt_flags = 0;
+
+    std::string m_pt_strInputData;
+};
+
+class WidgetTabInputManager
 {
-    std::string log_type_combo_name = "Log Type";
-    std::vector<std::string> log_type_items = {"none", "Supported Logs", "SMART", "FW Slot Info", "Host Telemetry", "Controller Telemetry", "Persistent", "Error Info"};
+    public:
+    WidgetTabInputManager()
+    {
+        m_pt_strTabBaseId = "Program";
+        m_pt_strTextInputLabel = "##struct";
 
-    widget_combo_box *pobj_log_type_combo_box  = new widget_combo_box(log_type_combo_name, log_type_items);
-    return pobj_log_type_combo_box;
+        m_pt_tabBarflags        = ImGuiTabBarFlags_Reorderable;
+        m_pt_textInputflags     = ImGuiInputTextFlags_AllowTabInput;
+    }
+
+    void SetTabBaseId(const std::string &strTabBaseId = "Program")
+    {
+        m_pt_strTabBaseId = strTabBaseId;
+    }
+
+    void SetTextInputLable(const std::string &strTextInputLabel = "##struct")
+    {
+        m_pt_strTextInputLabel = strTextInputLabel;
+    }
+
+    void SetFlags(ImGuiTabBarFlags tabBarflags, ImGuiInputTextFlags textInputflags)
+    {
+        m_pt_tabBarflags = tabBarflags;
+        m_pt_textInputflags = textInputflags;
+    }
+
+    void Draw()
+    {
+        if (ImGui::BeginTabBar(m_pt_strTabBaseId.c_str(), ImGuiTabBarFlags_Reorderable))
+        {
+            // Draw each tab
+            for (size_t i = 0; i < m_tabs.size(); ++i)
+            {
+                std::string tabLabel = m_pt_strTabBaseId.c_str() + std::string(" ") + std::to_string(i + 1);
+                if (ImGui::BeginTabItem(tabLabel.c_str()))
+                {
+                    m_tabs[i].Draw();
+                    ImGui::EndTabItem();
+                }
+            }
+
+            // "+" Button to add new tab
+            if (ImGui::TabItemButton("+", ImGuiTabItemFlags_Trailing | ImGuiTabItemFlags_NoTooltip))
+            {
+                AddNewTab();
+            }
+
+            ImGui::EndTabBar();
+        }
+    }
+
+    void AddNewTab()
+    {
+        WidgetInputTextMultiline newWidget(m_pt_strTextInputLabel, ImGuiInputTextFlags_AllowTabInput);
+        m_tabs.push_back(newWidget);
+    }
+
+    protected:
+    std::string m_pt_strTabBaseId;
+    std::string m_pt_strTextInputLabel;
+
+    ImGuiTabBarFlags m_pt_tabBarflags;
+    ImGuiInputTextFlags m_pt_textInputflags;
+
+    std::vector<WidgetInputTextMultiline> m_tabs;
+};
+
+
+void DrawTab()
+{
+    static ImVector<int> active_tabs;
+    static int next_tab_id = 0;
+
+    static bool show_help_button = true;
+    static bool show_add_tab_button = true;
+
+    bool opened = true;
+    static ImGuiTabBarFlags tab_bar_flags = ImGuiTabBarFlags_Reorderable;
+
+    if (ImGui::BeginTabBar("ProgramInput", tab_bar_flags))
+    {
+        if (show_help_button)
+        {
+            if (ImGui::TabItemButton("?", ImGuiTabItemFlags_Leading | ImGuiTabItemFlags_NoTooltip))
+            {
+                ImGui::OpenPopup("ProgramInputHelp");
+
+                if (ImGui::BeginPopup("ProgramInputHelp"))
+                {
+                    ImGui::Selectable("Program Input");
+                    ImGui::EndPopup();
+                }
+            }
+
+            if (ImGui::TabItemButton("+", ImGuiTabItemFlags_Trailing | ImGuiTabItemFlags_NoTooltip))
+            {
+                active_tabs.push_back(next_tab_id++); // Add new tab
+            }
+
+            for (int n = 0; n < active_tabs.Size; )
+            {
+                bool open = true;
+
+                if (ImGui::BeginTabItem("Struct", &open, ImGuiTabItemFlags_None))
+                {
+                    static char text[1024 * 16] =
+                        "/*\n"
+                        " The Pentium F00F bug, shorthand for F0 0F C7 C8,\n"
+                        " the hexadecimal encoding of one offending instruction,\n"
+                        " more formally, the invalid operand with locked CMPXCHG8B\n"
+                        " instruction bug, is a design flaw in the majority of\n"
+                        " Intel Pentium, Pentium MMX, and Pentium OverDrive\n"
+                        " processors (all in the P5 microarchitecture).\n"
+                        "*/\n\n"
+                        "label:\n"
+                        "\tlock cmpxchg8b eax\n";
+
+                    static ImGuiInputTextFlags flags = ImGuiInputTextFlags_AllowTabInput;
+                    ImGui::InputTextMultiline("##source", text, IM_ARRAYSIZE(text), ImVec2(-FLT_MIN, ImGui::GetTextLineHeight() * 16), flags);
+
+                    ImGui::EndTabItem();
+                }
+            }
+        }
+
+                
+
+
+
+        ImGui::EndTabBar();
+    }
 }
 
 static void glfw_error_callback(int error, const char* description)
@@ -48,37 +215,43 @@ static void glfw_error_callback(int error, const char* description)
 // Main code
 int main(int, char**)
 {
-    widget_combo_box *pobj_log_type_combo_box     = nullptr;
-    widget_combo_box *pobj_drive_family_combo_box = nullptr;
-
-    char binary_file_path[256] =  {'\0'};
-
     glfwSetErrorCallback(glfw_error_callback);
     if (!glfwInit())
         return 1;
 
-    const char* glsl_version = nullptr;
-
-#ifdef __EMSCRIPTEN__
-    glsl_version = "#version 300 es";
+    // Decide GL+GLSL versions
+#if defined(IMGUI_IMPL_OPENGL_ES2)
+    // GL ES 2.0 + GLSL 100 (WebGL 1.0)
+    const char* glsl_version = "#version 100";
+    glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 2);
+    glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 0);
+    glfwWindowHint(GLFW_CLIENT_API, GLFW_OPENGL_ES_API);
+#elif defined(IMGUI_IMPL_OPENGL_ES3)
+    // GL ES 3.0 + GLSL 300 es (WebGL 2.0)
+    const char* glsl_version = "#version 300 es";
     glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
     glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 0);
     glfwWindowHint(GLFW_CLIENT_API, GLFW_OPENGL_ES_API);
+#elif defined(__APPLE__)
+    // GL 3.2 + GLSL 150
+    const char* glsl_version = "#version 150";
+    glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
+    glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 2);
+    glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);  // 3.2+ only
+    glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GL_TRUE);            // Required on Mac
 #else
-    glsl_version = "#version 130"; // For desktop OpenGL 3.0
+    // GL 3.0 + GLSL 130
+    const char* glsl_version = "#version 130";
     glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
     glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 0);
+    //glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);  // 3.2+ only
+    //glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GL_TRUE);            // 3.0+ only
 #endif
 
-    // Get the primary monitor's resolution
-    GLFWmonitor* primaryMonitor = glfwGetPrimaryMonitor();
-    const GLFWvidmode* mode = glfwGetVideoMode(primaryMonitor);
-
     // Create window with graphics context
-    GLFWwindow* window = glfwCreateWindow(mode->width, mode->height, "WBParser", nullptr, nullptr);
+    GLFWwindow* window = glfwCreateWindow(1280, 720, "Dear ImGui GLFW+OpenGL3 example", nullptr, nullptr);
     if (window == nullptr)
         return 1;
-    
     glfwMakeContextCurrent(window);
     glfwSwapInterval(1); // Enable vsync
 
@@ -88,11 +261,22 @@ int main(int, char**)
     ImGuiIO& io = ImGui::GetIO(); (void)io;
     io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;     // Enable Keyboard Controls
     io.ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad;      // Enable Gamepad Controls
-    io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;
+    io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;         // Enable Docking
+    io.ConfigFlags |= ImGuiConfigFlags_ViewportsEnable;       // Enable Multi-Viewport / Platform Windows
+    //io.ConfigViewportsNoAutoMerge = true;
+    //io.ConfigViewportsNoTaskBarIcon = true;
 
     // Setup Dear ImGui style
     ImGui::StyleColorsDark();
     //ImGui::StyleColorsLight();
+
+    // When viewports are enabled we tweak WindowRounding/WindowBg so platform windows can look identical to regular ones.
+    ImGuiStyle& style = ImGui::GetStyle();
+    if (io.ConfigFlags & ImGuiConfigFlags_ViewportsEnable)
+    {
+        style.WindowRounding = 0.0f;
+        style.Colors[ImGuiCol_WindowBg].w = 1.0f;
+    }
 
     // Setup Platform/Renderer backends
     ImGui_ImplGlfw_InitForOpenGL(window, true);
@@ -101,39 +285,21 @@ int main(int, char**)
 #endif
     ImGui_ImplOpenGL3_Init(glsl_version);
 
-
     // Our state
-    bool show_demo_window = true;
-    bool show_another_window = false;
     ImVec4 clear_color = ImVec4(0.45f, 0.55f, 0.60f, 1.00f);
 
-    // Drive Family Combo Box
-    pobj_drive_family_combo_box = GetDriveFamilyComboBoxWidget();
-    if (pobj_drive_family_combo_box == nullptr)
-    {
-        fprintf(stderr, "Failed to create Drive Family Combo Box");
-        goto exit_status;
-    }
-
-    // Log Type Combo Box
-    pobj_log_type_combo_box = GetLogTypeComboBoxWidget();
-    if (pobj_log_type_combo_box == nullptr)
-    {
-        fprintf(stderr, "Failed to create Log Type Combo Box");
-        goto exit_status;
-    }
+    // WidgetInputTextMultiline objTextInput("##Struct_1", ImGuiInputTextFlags_AllowTabInput);
+    
+    WidgetTabInputManager objTabWidget;
 
     // Main loop
 #ifdef __EMSCRIPTEN__
-    // For an Emscripten build we are disabling file-system access, so let's not attempt to do a fopen() of the imgui.ini file.
-    // You may manually call LoadIniSettingsFromMemory() to load settings from your own storage.
     io.IniFilename = nullptr;
     EMSCRIPTEN_MAINLOOP_BEGIN
 #else
     while (!glfwWindowShouldClose(window))
 #endif
     {
-        // Poll and handle events (inputs, window resize, etc.)
         glfwPollEvents();
         if (glfwGetWindowAttrib(window, GLFW_ICONIFIED) != 0)
         {
@@ -146,132 +312,12 @@ int main(int, char**)
         ImGui_ImplGlfw_NewFrame();
         ImGui::NewFrame();
 
-        // Use full screen window
-        ImGui::SetNextWindowPos(ImVec2(0, 0));
-        ImGui::SetNextWindowSize(ImGui::GetIO().DisplaySize);
-        ImGui::Begin("MainWindow", nullptr,
-                    ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoTitleBar |
-                    ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove |
-                    ImGuiWindowFlags_NoBringToFrontOnFocus | ImGuiWindowFlags_NoNavFocus);
-        
-        bool trigger_load = false;
+        // objTextInput.Draw();
+        // printf("%s\n", objTextInput.GetInputData().c_str());
 
-        if (ImGui::BeginTable("ToolbarTable", 4, ImGuiTableFlags_SizingStretchProp | ImGuiTableFlags_NoBordersInBody))
-        {
-            ImGui::TableSetupColumn("BinPath", ImGuiTableColumnFlags_WidthStretch, 700.0f); // 50%
-            ImGui::TableSetupColumn("DriveFamily", ImGuiTableColumnFlags_WidthStretch, 250.0f); // 20%
-            ImGui::TableSetupColumn("LogType", ImGuiTableColumnFlags_WidthStretch, 250.0f); // 20%
+        objTabWidget.Draw();
 
-            ImGui::TableNextRow();
-
-            // === Column 0: Binary File Path Input ===
-            ImGui::TableSetColumnIndex(0);
-            bool enter_pressed = ImGui::InputTextWithHint("##BinPath", "Enter binary file path", binary_file_path, sizeof(binary_file_path),
-                                                        ImGuiInputTextFlags_EnterReturnsTrue);
-
-            // Check if Enter was pressed
-            if (enter_pressed)
-                trigger_load = true;
-
-            // === Load Button (Inline) ===
-            ImGui::SameLine();
-            if (ImGui::Button("Load"))
-                trigger_load = true;
-
-            // === Column 1: Drive Family Combo ===
-            ImGui::TableSetColumnIndex(1);
-            pobj_drive_family_combo_box->DrawComboBox();
-
-            // === Column 2: Log Type Combo ===
-            ImGui::TableSetColumnIndex(2);
-            pobj_log_type_combo_box->DrawComboBox();
-
-            ImGui::EndTable();
-        }
-
-        // === Tabs Section Below Table ===
-        if (ImGui::BeginTable("MainGrid", 2, ImGuiTableFlags_SizingStretchProp | ImGuiTableFlags_RowBg, ImVec2(0.0f, 0.0f)))
-        {
-            ImGui::TableSetupColumn(nullptr, ImGuiTableColumnFlags_WidthStretch);
-            ImGui::TableSetupColumn(nullptr, ImGuiTableColumnFlags_WidthStretch);
-
-            // Row 0
-            ImGui::TableNextRow();
-
-            // --- Cell [0][0]: Hex Editor ---
-            ImGui::TableSetColumnIndex(0);
-            {
-                ImGui::BeginChild("HexEditorRegion", ImVec2(0, 300), true);
-                static MemoryEditor mem_edit;
-                static char dummy_data[0x100] = {};
-                mem_edit.DrawContents(dummy_data, sizeof(dummy_data));
-                ImGui::EndChild();
-            }
-
-            // --- Cell [0][1]: Struct Input w/ tab + ---
-            ImGui::TableSetColumnIndex(1);
-            {
-                ImGui::BeginChild("StructTabsRegion", ImVec2(0, 300), true);
-
-                static std::vector<std::string> tab_names = {"Struct 1"};
-                static int tab_counter = 2;
-
-                if (ImGui::BeginTabBar("StructTabs"))
-                {
-                    // Loop through struct tabs
-                    for (size_t i = 0; i < tab_names.size(); ++i)
-                    {
-                        if (ImGui::BeginTabItem(tab_names[i].c_str()))
-                        {
-                            ImGui::Text("Input box for %s goes here.", tab_names[i].c_str());
-                            ImGui::EndTabItem();
-                        }
-                    }
-
-                    // Add "+" tab
-                    if (ImGui::TabItemButton("+", ImGuiTabItemFlags_Trailing | ImGuiTabItemFlags_NoTooltip))
-                    {
-                        tab_names.push_back("Struct " + std::to_string(tab_counter++));
-                    }
-
-                    ImGui::EndTabBar();
-                }
-
-                ImGui::EndChild();
-            }
-
-            // Row 1
-            ImGui::TableNextRow();
-
-            // --- Cell [1][0]: JSON Output ---
-            ImGui::TableSetColumnIndex(0);
-            {
-                ImGui::BeginChild("JsonOutputRegion", ImVec2(0, 200), true);
-                ImGui::TextWrapped("Parsed JSON will be displayed here.");
-                ImGui::EndChild();
-            }
-
-            // --- Cell [1][1]: Error Console ---
-            ImGui::TableSetColumnIndex(1);
-            {
-                ImGui::BeginChild("ErrorConsoleRegion", ImVec2(0, 200), true);
-                ImGui::TextWrapped("Any parse/load errors will be displayed here.");
-                ImGui::EndChild();
-            }
-
-            ImGui::EndTable();
-        }
-
-        // === Shared Load Action (Once per frame) ===
-        if (trigger_load)
-        {
-            // Replace this with actual loading logic
-            printf("Loading file: %s\n", binary_file_path);
-        }
-
-        ImGui::End();
-
-        /********** Rendering **********/
+        // Rendering
         ImGui::Render();
         int display_w, display_h;
         glfwGetFramebufferSize(window, &display_w, &display_h);
@@ -280,13 +326,23 @@ int main(int, char**)
         glClear(GL_COLOR_BUFFER_BIT);
         ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
 
+        // Update and Render additional Platform Windows
+        // (Platform functions may change the current OpenGL context, so we save/restore it to make it easier to paste this code elsewhere.
+        //  For this specific demo app we could also call glfwMakeContextCurrent(window) directly)
+        if (io.ConfigFlags & ImGuiConfigFlags_ViewportsEnable)
+        {
+            GLFWwindow* backup_current_context = glfwGetCurrentContext();
+            ImGui::UpdatePlatformWindows();
+            ImGui::RenderPlatformWindowsDefault();
+            glfwMakeContextCurrent(backup_current_context);
+        }
+
         glfwSwapBuffers(window);
     }
 #ifdef __EMSCRIPTEN__
     EMSCRIPTEN_MAINLOOP_END;
 #endif
 
-exit_status:
     // Cleanup
     ImGui_ImplOpenGL3_Shutdown();
     ImGui_ImplGlfw_Shutdown();
@@ -294,9 +350,6 @@ exit_status:
 
     glfwDestroyWindow(window);
     glfwTerminate();
-
-    delete pobj_log_type_combo_box;
-    delete pobj_drive_family_combo_box;
 
     return 0;
 }
