@@ -11,6 +11,11 @@
 #include "imgui_impl_glfw.h"
 #include "imgui_impl_opengl3.h"
 
+#include "../include/imgui_memory_editor.h"
+
+#include "../include/json.hpp"
+using ordered_json = nlohmann::ordered_json;
+
 #define GL_SILENCE_DEPRECATION
 #if defined(IMGUI_IMPL_OPENGL_ES2)
 #include <GLES2/gl2.h>
@@ -74,13 +79,13 @@ protected:
 
 class WidgetTabInputManager
 {
-    public:
+public:
     WidgetTabInputManager()
     {
         m_pt_strTabBaseId = "Program";
         m_pt_strTextInputLabel = "##struct";
 
-        m_pt_tabBarflags        = ImGuiTabBarFlags_Reorderable;
+        m_pt_tabBarflags        = ImGuiTabBarFlags_Reorderable | ImGuiTabBarFlags_AutoSelectNewTabs | ImGuiTabBarFlags_NoCloseWithMiddleMouseButton | ImGuiTabBarFlags_TabListPopupButton | ImGuiTabBarFlags_DrawSelectedOverline | ImGuiWindowFlags_UnsavedDocument;
         m_pt_textInputflags     = ImGuiInputTextFlags_AllowTabInput;
     }
 
@@ -102,7 +107,7 @@ class WidgetTabInputManager
 
     void Draw()
     {
-        if (ImGui::BeginTabBar(m_pt_strTabBaseId.c_str(), ImGuiTabBarFlags_Reorderable))
+        if (ImGui::BeginTabBar(m_pt_strTabBaseId.c_str(), m_pt_tabBarflags))
         {
             // Draw each tab
             for (size_t i = 0; i < m_tabs.size(); ++i)
@@ -131,7 +136,7 @@ class WidgetTabInputManager
         m_tabs.push_back(newWidget);
     }
 
-    protected:
+protected:
     std::string m_pt_strTabBaseId;
     std::string m_pt_strTextInputLabel;
 
@@ -141,71 +146,181 @@ class WidgetTabInputManager
     std::vector<WidgetInputTextMultiline> m_tabs;
 };
 
-
-void DrawTab()
+class WidgetOutputTabManager
 {
-    static ImVector<int> active_tabs;
-    static int next_tab_id = 0;
-
-    static bool show_help_button = true;
-    static bool show_add_tab_button = true;
-
-    bool opened = true;
-    static ImGuiTabBarFlags tab_bar_flags = ImGuiTabBarFlags_Reorderable;
-
-    if (ImGui::BeginTabBar("ProgramInput", tab_bar_flags))
+public:
+    WidgetOutputTabManager()
     {
-        if (show_help_button)
+        m_pt_strJsonInputText = "{}";
+        m_pt_ojsonObjJsonText = ordered_json::parse(m_pt_strJsonInputText);
+    }
+
+    void DrawJsonObject(const ordered_json &ojsonObjInput)
+    {
+        for (auto it = ojsonObjInput.begin(); it != ojsonObjInput.end(); ++it)
         {
-            if (ImGui::TabItemButton("?", ImGuiTabItemFlags_Leading | ImGuiTabItemFlags_NoTooltip))
+            if (it->is_object())
             {
-                ImGui::OpenPopup("ProgramInputHelp");
-
-                if (ImGui::BeginPopup("ProgramInputHelp"))
+                if (ImGui::TreeNode(it.key().c_str()))
                 {
-                    ImGui::Selectable("Program Input");
-                    ImGui::EndPopup();
+                    DrawJsonObject(*it);
+                    ImGui::TreePop();
                 }
             }
-
-            if (ImGui::TabItemButton("+", ImGuiTabItemFlags_Trailing | ImGuiTabItemFlags_NoTooltip))
+            else if (it->is_array())
             {
-                active_tabs.push_back(next_tab_id++); // Add new tab
-            }
-
-            for (int n = 0; n < active_tabs.Size; )
-            {
-                bool open = true;
-
-                if (ImGui::BeginTabItem("Struct", &open, ImGuiTabItemFlags_None))
+                if (ImGui::TreeNode(it.key().c_str()))
                 {
-                    static char text[1024 * 16] =
-                        "/*\n"
-                        " The Pentium F00F bug, shorthand for F0 0F C7 C8,\n"
-                        " the hexadecimal encoding of one offending instruction,\n"
-                        " more formally, the invalid operand with locked CMPXCHG8B\n"
-                        " instruction bug, is a design flaw in the majority of\n"
-                        " Intel Pentium, Pentium MMX, and Pentium OverDrive\n"
-                        " processors (all in the P5 microarchitecture).\n"
-                        "*/\n\n"
-                        "label:\n"
-                        "\tlock cmpxchg8b eax\n";
-
-                    static ImGuiInputTextFlags flags = ImGuiInputTextFlags_AllowTabInput;
-                    ImGui::InputTextMultiline("##source", text, IM_ARRAYSIZE(text), ImVec2(-FLT_MIN, ImGui::GetTextLineHeight() * 16), flags);
-
-                    ImGui::EndTabItem();
+                    for (size_t i = 0; i < it->size(); ++i)
+                    {
+                        if ((*it)[i].is_object())
+                        {
+                            if (ImGui::TreeNode(std::to_string(i).c_str()))
+                            {
+                                DrawJsonObject((*it)[i]);
+                                ImGui::TreePop();
+                            }
+                        }
+                        else
+                        {
+                            ImGui::Text("[%zu]: %s", i, (*it)[i].dump().c_str());
+                        }
+                    }
+                    ImGui::TreePop();
                 }
+            }
+            else
+            {
+                ImGui::Text("%s: %s", it.key().c_str(), it->dump().c_str());
             }
         }
-
-                
-
-
-
-        ImGui::EndTabBar();
     }
-}
+
+    void Draw()
+    {
+        DrawJsonObject(m_pt_ojsonObjJsonText);
+    }
+
+    void SetJsonText(const std::string &strJsonText)
+    {
+        m_pt_strJsonInputText = strJsonText;
+        m_pt_ojsonObjJsonText = ordered_json::parse(m_pt_strJsonInputText);
+    }
+
+protected:
+    std::string m_pt_strJsonInputText;
+    ordered_json m_pt_ojsonObjJsonText;
+};
+
+class WidgetJsonTable
+{
+public:
+    WidgetJsonTable()
+    {
+        m_pt_strJsonInputText = "{}";
+        m_pt_ojsonObjJsonText = ordered_json::parse(m_pt_strJsonInputText);
+    }
+
+    void DrawJsonObject(const ordered_json &ojsonObjInput)
+    {
+        for (auto it = ojsonObjInput.begin(); it != ojsonObjInput.end(); ++it)
+        {
+            if (it->is_object())
+            {
+                ImGui::TableNextRow();
+                ImGui::TableNextColumn();
+                if (ImGui::TreeNode(it.key().c_str()))
+                {
+                    DrawJsonObject(*it);
+                    ImGui::TreePop();
+                }
+            }
+            else if (it->is_array())
+            {
+                ImGui::TableNextRow();
+                ImGui::TableNextColumn();
+                if (ImGui::TreeNode(it.key().c_str()))
+                {
+                    for (size_t i = 0; i < it->size(); ++i)
+                    {
+                        ImGui::TableNextRow();
+                        ImGui::TableNextColumn();
+                        if ((*it)[i].is_object())
+                        {
+                            if (ImGui::TreeNode(std::to_string(i).c_str()))
+                            {
+                                DrawJsonObject((*it)[i]);
+                                ImGui::TreePop();
+                            }
+                        }
+                        else
+                        {
+                            ImGui::Text("[%zu]", i);
+                            ImGui::TableNextColumn();
+                            ImGui::Text("%s", (*it)[i].dump().c_str());
+                        }
+                    }
+                    ImGui::TreePop();
+                }
+            }
+            else
+            {
+                ImGui::TableNextRow();
+                ImGui::TableNextColumn();
+                ImGui::Text("%s", it.key().c_str());
+                ImGui::TableNextColumn();
+                ImGui::Text("%s", it->dump().c_str());
+            }
+        }
+    }
+
+    void Draw()
+    {
+        if (ImGui::BeginTable("JSON Table", 2, ImGuiTableFlags_RowBg | ImGuiTableFlags_Borders | ImGuiTableFlags_Resizable))
+        {
+            ImGui::TableSetupColumn("Key");
+            ImGui::TableSetupColumn("Value");
+            ImGui::TableHeadersRow();
+            DrawJsonObject(m_pt_ojsonObjJsonText);
+            ImGui::EndTable();
+        }
+    }
+
+    void SetJsonText(const std::string &strJsonText)
+    {
+        m_pt_strJsonInputText = strJsonText;
+        m_pt_ojsonObjJsonText = ordered_json::parse(m_pt_strJsonInputText);
+    }
+
+protected:
+    std::string m_pt_strJsonInputText;
+    ordered_json m_pt_ojsonObjJsonText;
+};
+
+
+class WidgetHexEditor
+{
+public:
+    WidgetHexEditor()
+    {
+        m_pt_vtucBinaryData.push_back(0);
+        // m_pt_sMemeoryEditor.DrawWindow("Hex Editor", m_pt_vtucBinaryData.data(), m_pt_vtucBinaryData.size());
+    }
+
+    void Draw(void)
+    {
+        m_pt_sMemeoryEditor.DrawContents(m_pt_vtucBinaryData.data(), m_pt_vtucBinaryData.size());
+    }
+
+    void SetBinaryData(const std::vector<unsigned char> &vtucBinaryData)
+    {
+        m_pt_vtucBinaryData.insert(m_pt_vtucBinaryData.begin(), vtucBinaryData.begin(), vtucBinaryData.end());
+    }
+
+protected:
+    struct MemoryEditor m_pt_sMemeoryEditor;
+    std::vector<unsigned char> m_pt_vtucBinaryData;
+};
 
 static void glfw_error_callback(int error, const char* description)
 {
@@ -290,7 +405,36 @@ int main(int, char**)
 
     // WidgetInputTextMultiline objTextInput("##Struct_1", ImGuiInputTextFlags_AllowTabInput);
     
-    WidgetTabInputManager objTabWidget;
+    WidgetTabInputManager objProgramTabWidget;
+
+    WidgetTabInputManager objVariableTabWidget;
+    objVariableTabWidget.SetTabBaseId("Variables");
+
+    WidgetHexEditor objHexEditorWidget;
+
+    std::string strJson = R"({
+        "sSMARTInfo": {
+            "ucCriticalWarning": {
+                "ucSpareSpaceTrip": 0,
+                "ucTemperatureTrip": 0,
+                "ucReliabilityTrip": 0,
+                "ucReadOnly": 0,
+                "ucBackupCapFailed": 0,
+                "ucRsvd": 0
+            },
+            "ucCriticalWarningRaw": 0,
+    })";
+
+    WidgetJsonTable objOutputJsonTableWindget;
+    objOutputJsonTableWindget.SetJsonText(strJson);
+
+    // WidgetOutputTabManager objOutputTabManager;
+    // objOutputTabManager.SetJsonText(strJson);
+
+    MemoryEditor sMemEditor;
+    char display_data[10] = {0};
+    int size = 0;
+
 
     // Main loop
 #ifdef __EMSCRIPTEN__
@@ -315,7 +459,25 @@ int main(int, char**)
         // objTextInput.Draw();
         // printf("%s\n", objTextInput.GetInputData().c_str());
 
-        objTabWidget.Draw();
+        ImGui::Begin("Hex Editor");
+        objHexEditorWidget.Draw();
+        ImGui::End();
+
+        ImGui::Begin("Struct/Union Input");
+        objProgramTabWidget.Draw();
+        ImGui::End();
+
+        ImGui::Begin("Variable Input");
+        objVariableTabWidget.Draw();
+        ImGui::End();
+
+        // ImGui::Begin("Parsed Output");
+        // objOutputTabManager.Draw();
+        // ImGui::End();
+
+        ImGui::Begin("Parsed Output");
+        objOutputJsonTableWindget.Draw();
+        ImGui::End();
 
         // Rendering
         ImGui::Render();
