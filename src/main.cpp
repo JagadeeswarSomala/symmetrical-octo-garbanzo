@@ -422,7 +422,8 @@ int main(int, char**)
                 "ucBackupCapFailed": 0,
                 "ucRsvd": 0
             },
-            "ucCriticalWarningRaw": 0,
+            "ucCriticalWarningRaw": 0
+        }
     })";
 
     WidgetJsonTable objOutputJsonTableWindget;
