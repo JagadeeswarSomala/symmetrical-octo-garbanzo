@@ -35,7 +35,7 @@ class WidgetInputTextMultiline
 public:
     WidgetInputTextMultiline() : m_pt_flags(0) {}
 
-    WidgetInputTextMultiline(const std::string &strLabel, ImGuiInputTextFlags flags = ImGuiInputTextFlags_AllowTabInput, ImVec2 size = ImVec2(-FLT_MIN, 200))
+    WidgetInputTextMultiline(const std::string &strLabel, ImGuiInputTextFlags flags = ImGuiInputTextFlags_AllowTabInput, ImVec2 size = ImVec2(-FLT_MIN, -FLT_MIN))
         : m_pt_strLabel(strLabel), m_pt_flags(flags), m_pt_size(size) {}
 
     void SetLabel(const std::string &strLabel)
@@ -48,7 +48,7 @@ public:
         m_pt_flags = flags;
     }
 
-    void SetSize(float width = -FLT_MIN, float height = 200)
+    void SetSize(float width = -FLT_MIN, float height = -FLT_MIN)
     {
         m_pt_size.x = width;
         m_pt_size.y = height;
@@ -146,71 +146,25 @@ protected:
     std::vector<WidgetInputTextMultiline> m_tabs;
 };
 
-class WidgetOutputTabManager
-{
-public:
-    WidgetOutputTabManager()
-    {
-        m_pt_strJsonInputText = "{}";
-        m_pt_ojsonObjJsonText = ordered_json::parse(m_pt_strJsonInputText);
-    }
+// class WidgetOutputTabManager
+// {
+// public:
+//     void Draw()
+//     {
+//         if (ImGui::BeginTabBar("Filtered Json"))
+//         {
+//             if (ImGui::BeginTabItem(tabLabel.c_str()))
+//             {
+//                 m_tabs[i].Draw();
+//                 ImGui::EndTabItem();
+//             }
 
-    void DrawJsonObject(const ordered_json &ojsonObjInput)
-    {
-        for (auto it = ojsonObjInput.begin(); it != ojsonObjInput.end(); ++it)
-        {
-            if (it->is_object())
-            {
-                if (ImGui::TreeNode(it.key().c_str()))
-                {
-                    DrawJsonObject(*it);
-                    ImGui::TreePop();
-                }
-            }
-            else if (it->is_array())
-            {
-                if (ImGui::TreeNode(it.key().c_str()))
-                {
-                    for (size_t i = 0; i < it->size(); ++i)
-                    {
-                        if ((*it)[i].is_object())
-                        {
-                            if (ImGui::TreeNode(std::to_string(i).c_str()))
-                            {
-                                DrawJsonObject((*it)[i]);
-                                ImGui::TreePop();
-                            }
-                        }
-                        else
-                        {
-                            ImGui::Text("[%zu]: %s", i, (*it)[i].dump().c_str());
-                        }
-                    }
-                    ImGui::TreePop();
-                }
-            }
-            else
-            {
-                ImGui::Text("%s: %s", it.key().c_str(), it->dump().c_str());
-            }
-        }
-    }
+//             ImGui::EndTabBar();
+//         }
+//     }
+// protected:
 
-    void Draw()
-    {
-        DrawJsonObject(m_pt_ojsonObjJsonText);
-    }
-
-    void SetJsonText(const std::string &strJsonText)
-    {
-        m_pt_strJsonInputText = strJsonText;
-        m_pt_ojsonObjJsonText = ordered_json::parse(m_pt_strJsonInputText);
-    }
-
-protected:
-    std::string m_pt_strJsonInputText;
-    ordered_json m_pt_ojsonObjJsonText;
-};
+// };
 
 class WidgetJsonTable
 {
@@ -322,6 +276,181 @@ protected:
     std::vector<unsigned char> m_pt_vtucBinaryData;
 };
 
+class EnableDock
+{
+public:
+    EnableDock()
+    {
+        m_pt_bIsOpenSelected = false;
+    }
+
+    void Draw()
+    {
+        bool open = true;
+        static ImGuiDockNodeFlags dockspace_flags = ImGuiDockNodeFlags_None;
+        ImGuiWindowFlags window_flags = ImGuiWindowFlags_MenuBar | ImGuiWindowFlags_NoDocking;
+
+        const ImGuiViewport* viewport = ImGui::GetMainViewport();
+
+        ImGui::SetNextWindowPos(viewport->WorkPos);
+        ImGui::SetNextWindowSize(viewport->WorkSize);
+        ImGui::SetNextWindowViewport(viewport->ID);
+
+        ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 0.0f);
+        ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.0f);
+
+        window_flags |= ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove;
+        window_flags |= ImGuiWindowFlags_NoBringToFrontOnFocus | ImGuiWindowFlags_NoNavFocus;
+
+        ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0f, 0.0f));
+        ImGui::Begin("WBParser", &open, window_flags);
+        ImGui::PopStyleVar();
+        ImGui::PopStyleVar(2);
+
+        ImGuiIO& io = ImGui::GetIO();
+        if (io.ConfigFlags & ImGuiConfigFlags_DockingEnable)
+        {
+            m_pt_dockspaceID = ImGui::GetID("WBParserDock");
+
+            if (!ImGui::DockBuilderGetNode(m_pt_dockspaceID))
+            {
+                ImGui::DockBuilderRemoveNode(m_pt_dockspaceID);
+                ImGui::DockBuilderAddNode(m_pt_dockspaceID, dockspace_flags);
+
+                // Split the main dockspace node into left and right nodes
+                m_pt_leftID = ImGui::DockBuilderSplitNode(m_pt_dockspaceID, ImGuiDir_Left, 0.3f, nullptr, &m_pt_rightID);
+
+                //split left node into top and bottom nodes
+                m_pt_leftTopID = ImGui::DockBuilderSplitNode(m_pt_leftID, ImGuiDir_Up, 0.5f, nullptr, &m_pt_leftBottomID);
+
+                //split right node into top and bottom nodes
+                m_pt_rightTopID = ImGui::DockBuilderSplitNode(m_pt_rightID, ImGuiDir_Up, 0.5f, nullptr, &m_pt_rightBottomID);
+
+                // Dock windows to the resulting nodes
+                ImGui::DockBuilderDockWindow("Hex Editor", m_pt_leftTopID);
+                ImGui::DockBuilderDockWindow("Program Input", m_pt_rightTopID);
+                ImGui::DockBuilderDockWindow("Parsed Output", m_pt_leftBottomID);
+                ImGui::DockBuilderDockWindow("Variable Input", m_pt_rightBottomID);
+            }
+
+            ImGui::DockSpace(m_pt_dockspaceID, ImVec2(0.0f, 0.0f), dockspace_flags);
+        }
+
+        if (ImGui::BeginMenuBar())
+        {
+            if (ImGui::BeginMenu("File"))
+            {
+                ImGui::MenuItem("Open", NULL, &m_pt_bIsOpenSelected);
+                ImGui::EndMenu();
+            }
+
+            ImGui::EndMenuBar();
+        }
+
+        ImGui::End();
+    }
+
+    void DockerBuilder(void)
+    {
+        const ImGuiViewport* viewport = ImGui::GetMainViewport();
+
+        ImGui::SetNextWindowPos(viewport->WorkPos);
+        ImGui::SetNextWindowSize(viewport->WorkSize);
+        ImGui::SetNextWindowViewport(viewport->ID);
+
+        ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 0.0f);
+        ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.0f);
+
+
+    }
+
+protected:
+    ImGuiViewport* m_pt_viewport;
+
+    ImGuiID m_pt_leftID, m_pt_rightID;
+
+    ImGuiID m_pt_leftTopID, m_pt_leftBottomID;
+    ImGuiID m_pt_rightTopID, m_pt_rightBottomID;
+
+    ImGuiID m_pt_dockspaceID;
+    bool m_pt_bIsOpenSelected;
+};
+
+class MainLayout
+{
+public:
+    MainLayout()
+    {
+        m_pt_objVariableTabWidget.SetTabBaseId("Variables");
+        
+        m_pt_objUnfilteredJsonTableWidget.SetJsonText(strJson);
+        m_pt_objFilteredJsonTableWidget.SetJsonText(strJson);
+    }
+
+    void Draw()
+    {
+        m_pt_objEnableDock.Draw();
+
+        ImGui::Begin("Hex Editor");
+        m_pt_objHexEditorWidget.Draw();
+        ImGui::End();
+
+        ImGui::Begin("Program Input");
+        m_pt_objProgramTabWidget.Draw();
+        ImGui::End();
+
+        ImGui::Begin("Parsed Output");
+        
+        if (ImGui::BeginTabBar("Output"))
+        {
+            if (ImGui::BeginTabItem("Filtered Output"))
+            {
+                m_pt_objFilteredJsonTableWidget.Draw();
+                ImGui::EndTabItem();
+            }
+
+            if (ImGui::BeginTabItem("Unfiltered Output"))
+            {
+                m_pt_objUnfilteredJsonTableWidget.Draw();
+                ImGui::EndTabItem();
+            }
+
+            ImGui::EndTabBar();
+        }
+        
+        ImGui::End();
+
+        ImGui::Begin("Variable Input");
+        m_pt_objVariableTabWidget.Draw();
+        ImGui::End();
+    }
+
+protected:
+    WidgetHexEditor m_pt_objHexEditorWidget;
+
+    WidgetTabInputManager m_pt_objProgramTabWidget;
+    WidgetTabInputManager m_pt_objVariableTabWidget;
+
+    WidgetJsonTable m_pt_objFilteredJsonTableWidget;
+    WidgetJsonTable m_pt_objUnfilteredJsonTableWidget;
+
+    EnableDock m_pt_objEnableDock;
+
+    std::string strJson = R"({
+        "sSMARTInfo": {
+            "ucCriticalWarning": {
+                "ucSpareSpaceTrip": 0,
+                "ucTemperatureTrip": 0,
+                "ucReliabilityTrip": 0,
+                "ucReadOnly": 0,
+                "ucBackupCapFailed": 0,
+                "ucRsvd": 0
+            },
+            "ucCriticalWarningRaw": 0
+        }
+    })";
+};
+
 static void glfw_error_callback(int error, const char* description)
 {
     fprintf(stderr, "GLFW Error %d: %s\n", error, description);
@@ -403,39 +532,7 @@ int main(int, char**)
     // Our state
     ImVec4 clear_color = ImVec4(0.45f, 0.55f, 0.60f, 1.00f);
 
-    // WidgetInputTextMultiline objTextInput("##Struct_1", ImGuiInputTextFlags_AllowTabInput);
-    
-    WidgetTabInputManager objProgramTabWidget;
-
-    WidgetTabInputManager objVariableTabWidget;
-    objVariableTabWidget.SetTabBaseId("Variables");
-
-    WidgetHexEditor objHexEditorWidget;
-
-    std::string strJson = R"({
-        "sSMARTInfo": {
-            "ucCriticalWarning": {
-                "ucSpareSpaceTrip": 0,
-                "ucTemperatureTrip": 0,
-                "ucReliabilityTrip": 0,
-                "ucReadOnly": 0,
-                "ucBackupCapFailed": 0,
-                "ucRsvd": 0
-            },
-            "ucCriticalWarningRaw": 0
-        }
-    })";
-
-    WidgetJsonTable objOutputJsonTableWindget;
-    objOutputJsonTableWindget.SetJsonText(strJson);
-
-    // WidgetOutputTabManager objOutputTabManager;
-    // objOutputTabManager.SetJsonText(strJson);
-
-    MemoryEditor sMemEditor;
-    char display_data[10] = {0};
-    int size = 0;
-
+    MainLayout objMainLayout;
 
     // Main loop
 #ifdef __EMSCRIPTEN__
@@ -457,28 +554,7 @@ int main(int, char**)
         ImGui_ImplGlfw_NewFrame();
         ImGui::NewFrame();
 
-        // objTextInput.Draw();
-        // printf("%s\n", objTextInput.GetInputData().c_str());
-
-        ImGui::Begin("Hex Editor");
-        objHexEditorWidget.Draw();
-        ImGui::End();
-
-        ImGui::Begin("Struct/Union Input");
-        objProgramTabWidget.Draw();
-        ImGui::End();
-
-        ImGui::Begin("Variable Input");
-        objVariableTabWidget.Draw();
-        ImGui::End();
-
-        // ImGui::Begin("Parsed Output");
-        // objOutputTabManager.Draw();
-        // ImGui::End();
-
-        ImGui::Begin("Parsed Output");
-        objOutputJsonTableWindget.Draw();
-        ImGui::End();
+        objMainLayout.Draw();
 
         // Rendering
         ImGui::Render();
